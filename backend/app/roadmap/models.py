@@ -1,0 +1,13 @@
+from typing import Literal
+from pydantic import BaseModel, Field
+Priority=Literal['P0','P1','P2','P3']; Effort=Literal['XS','S','M','L','XL']; Impact=Literal['low','medium','high','very_high']; Risk=Literal['low','medium','high','critical']; Safety=Literal['safe_to_automate','human_review_required','do_not_automate']
+class RenovationAction(BaseModel):
+ action_id:str; title:str; description:str; category:str; priority:Priority; effort:Effort; impact:Impact; risk:Risk; phase:str; rationale:str; evidence_references:list[str]=Field(default_factory=list); source_finding_ids:list[str]=Field(default_factory=list); prerequisites:list[str]=Field(default_factory=list); expected_outcome:str; acceptance_criteria:list[str]=Field(default_factory=list); requires_manual_review:bool=True; automation_safety:Safety='human_review_required'; deterministic_or_inferred:Literal['deterministic','inferred']='inferred'; limitations:list[str]=Field(default_factory=list)
+class RoadmapPhase(BaseModel):
+ phase_id:str; name:str; objective:str; sequence:int; action_ids:list[str]=Field(default_factory=list); entry_conditions:list[str]=Field(default_factory=list); exit_conditions:list[str]=Field(default_factory=list); blockers:list[str]=Field(default_factory=list); expected_outcomes:list[str]=Field(default_factory=list); manual_review_points:list[str]=Field(default_factory=list)
+class ModernizationBlocker(BaseModel):
+ blocker_id:str; title:str; description:str; category:str; severity:str; confidence:str; evidence_references:list[str]=Field(default_factory=list); source_finding_ids:list[str]=Field(default_factory=list); why_blocking:str; mitigation:str; requires_manual_review:bool=True
+class RenovationRoadmap(BaseModel):
+ roadmap_version:str; summary:str; current_state:str; target_state:str; recommended_sequence:list[str]=Field(default_factory=list); quick_wins:list[str]=Field(default_factory=list); roadmap_phases:list[RoadmapPhase]=Field(default_factory=list); actions:list[RenovationAction]=Field(default_factory=list); blockers:list[ModernizationBlocker]=Field(default_factory=list); dependency_order:list[str]=Field(default_factory=list); estimated_complexity:str; expected_benefits:list[str]=Field(default_factory=list); safety_warnings:list[str]=Field(default_factory=list); limitations:list[str]=Field(default_factory=list); evidence_references:list[str]=Field(default_factory=list); deterministic:bool=True
+class RoadmapResult(BaseModel):
+ roadmap:RenovationRoadmap; roadmap_status:Literal['completed','partial','failed']='completed'; processing_warnings:list[str]=Field(default_factory=list); deterministic:bool=True
