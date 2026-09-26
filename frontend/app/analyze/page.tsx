@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { Shell } from "@/components/Shell";
 import { CountUp } from "@/components/CountUp";
 import { FindingCard } from "@/components/FindingCard";
@@ -8,6 +9,11 @@ import { PhaseCard } from "@/components/PhaseCard";
 import { RiskRow } from "@/components/RiskRow";
 import { StatTile } from "@/components/StatTile";
 import { apiRequest, AnalyzeResponse, exportCanonicalReport } from "@/lib/api";
+
+const ArchitectureMap = dynamic(() => import("@/components/ArchitectureMap").then((module) => module.ArchitectureMap), {
+  ssr: false,
+  loading: () => <div className="shimmer h-[420px] rounded-[16px]" />,
+});
 
 const stages = [
   "Validating URL",
@@ -318,6 +324,8 @@ export default function AnalyzePage() {
                 </div>
               )}
             </Section>
+
+            <ArchitectureMap data={data} />
 
             <Section title="Prioritized risks">
               {(data.assessment.assessment.risk_priorities ?? []).length === 0 ? (
