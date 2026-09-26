@@ -1,59 +1,87 @@
-# LegacyLens
+# LegacyLens — Evidence-backed repository intelligence
 
-**Understand legacy code. See the risks. Modernize with confidence.**
+**LegacyLens turns a public GitHub repository into an evidence-backed modernization assessment: what is in the codebase, how healthy it is, which risks matter first, and what to renovate next — with every claim traceable to a file path.**
 
-LegacyLens is a security-conscious developer intelligence platform that turns a **public GitHub repository** into an evidence-backed modernization assessment. It focuses on deterministic static analysis, specialist review, conservative health scoring, prioritized risks, and a human-review-aware renovation roadmap.
+## The pitch
 
-## What problem does it solve?
+Before touching an inherited codebase, engineers burn hours answering the same questions: what is actually here, where are the fragile areas, what evidence supports that, and what should change first? LegacyLens automates that first investigation. It ingests a public GitHub repository safely, runs seven deterministic specialist analyzers over the extracted snapshot, scores seven weighted health categories, prioritizes risks P0–P3, and produces a six-phase renovation roadmap. Every finding carries its evidence references and an explicit source classification, so a heuristic signal is never presented as a confirmed defect. Nothing is executed: the repository is read, never run.
 
-Before changing an old repository, engineers often spend significant time answering basic questions: What is here? How is it structured? Where are the risky or fragile areas? What evidence supports those concerns? What should be changed first?
+## Screenshots
 
-LegacyLens turns that initial investigation into a repeatable assessment workflow without executing repository code or silently inventing runtime facts.
-
-## Product flow
-
-**DISCOVER → UNDERSTAND → PRIORITIZE → MODERNIZE**
-
-1. Submit a public GitHub repository URL.
-2. Safely ingest the repository into a temporary workspace.
-3. Detect languages, technologies, dependencies, testing/documentation signals, configuration, and code metrics.
-4. Run seven deterministic specialist analyzers.
-5. Calculate a weighted health assessment and risk priorities.
-6. Generate an evidence-backed renovation roadmap.
-7. Present the result in an interactive Next.js dashboard.
-8. Export the canonical engineering report as JSON, Markdown, or standalone HTML.
-
-## Core features
-
-- Public GitHub URL validation with server-side authority.
-- Bounded archive ingestion with traversal/link/resource protections.
-- No repository code execution and no dependency installation during analysis.
-- Deterministic repository analysis.
-- Seven specialist analyzers: Architecture, Security, Dependencies, Testing, Documentation, Maintainability, and Modernization Readiness.
-- Weighted health scoring with controlled severity/confidence/evidence effects.
-- P0–P3 risk prioritization.
-- Evidence-linked renovation actions, quick wins, blockers, prerequisites, and acceptance criteria.
-- Explainability-first assessment dashboard.
-- Canonical backend JSON, Markdown, and HTML exports.
-- Responsive frontend with accessible labels, filters, expandable findings, and safe export downloads.
-
-## Seven specialist analyzers
-
-| Specialist | Focus |
+| | |
 |---|---|
-| Architecture | Entry-point concentration, structural signals, architecture documentation gaps |
-| Security | Conservative configuration/security indicators and documentation gaps |
-| Dependencies | Lockfiles, manifests, malformed dependency metadata, reproducibility signals |
-| Testing | Test discovery, framework/script signals, test density, coverage evidence |
-| Documentation | README presence and documentation category gaps |
-| Maintainability | Large-file outliers and TODO/FIXME debt markers |
-| Modernization Readiness | Safe modernization prerequisites such as characterization tests, documentation, and reproducible dependencies |
+| ![Landing page](docs/screenshots/01-landing.png) | ![Repository input](docs/screenshots/02-analyze-input.png) |
+| *01 — Landing page* | *02 — Repository input on `/analyze`* |
+| ![Loading state](docs/screenshots/03-loading.png) | ![Assessment overview](docs/screenshots/04-assessment-overview.png) |
+| *03 — Processing state with skeleton layout* | *04 — Assessment overview and health score* |
+| ![Specialist findings](docs/screenshots/05-specialist-findings.png) | ![Architecture map](docs/screenshots/06-architecture-map.png) |
+| *05 — Specialist findings with evidence* | *06 — Interactive architecture map* |
+| ![Renovation roadmap](docs/screenshots/07-renovation-roadmap.png) | ![Exports](docs/screenshots/08-exports.png) |
+| *07 — Renovation roadmap phases and actions* | *08 — Canonical exports* |
 
-Findings distinguish evidence from inference. A heuristic indicator is not presented as a confirmed vulnerability.
+All screenshots were captured from the running application analyzing `https://github.com/pallets/flask`.
 
-## Health scoring
+## Architecture
 
-The current scoring model uses these category weights:
+**Backend:** FastAPI · safe ingestion · deterministic analysis · 7 specialists · weighted scoring · roadmap engine · canonical exports · SQLite (local/test) with PostgreSQL configuration for non-development environments.
+**Frontend:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS 3 · framer-motion · react-force-graph-2d for the architecture map.
+
+```text
+   GitHub repository URL (HTTPS, github.com/owner/repo only)
+                        │
+                        ▼
+              ┌───────────────────┐
+              │     Ingestion     │  URL validation, bounded archive
+              │                   │  download, traversal-safe extract
+              └─────────┬─────────┘  into a temporary workspace
+                        ▼
+              ┌───────────────────┐
+              │  Deterministic    │  languages, technologies, metrics,
+              │     Analysis      │  entry points, testing/doc signals
+              └──────────────────┘
+                        ▼
+              ┌───────────────────┐
+              │   7 Specialists   │  architecture · security · dependencies
+              │                   │  testing · documentation ·
+              │                   │  maintainability · modernization
+              └─────────┬─────────┘
+                        ▼
+              ┌───────────────────┐
+              │      Scoring      │  7 weighted categories, 0–100,
+              │                   │  severity × confidence × evidence
+              └──────────────────┘
+                        ▼
+              ┌───────────────────┐
+              │      Roadmap      │  6 phases, P0–P3 actions, blockers,
+              │                   │  quick wins, acceptance criteria
+              └──────────────────┘
+                        ▼
+              ┌───────────────────┐        ┌──────────────────────┐
+              │      Report       │───────▶│  Next.js dashboard   │
+              │  (canonical JSON) │        │  + JSON/MD/HTML      │
+              └───────────────────┘        │  export downloads    │
+                                           └──────────────────────┘
+```
+
+The frontend renders the backend assessment exactly as returned; it never recomputes scores or invents findings.
+
+## The seven specialists
+
+| Specialist | What it measures |
+|---|---|
+| `architecture` | Entry-point concentration, deep module nesting, missing architecture documentation signals |
+| `security` | Conservative configuration indicators (suspicious config filenames, missing `.env.example`, missing security docs) — not vulnerability scanning |
+| `dependencies` | Missing lockfiles next to manifests and malformed/unparseable dependency manifests |
+| `testing` | Absent test files and a test-to-source ratio below 0.1 |
+| `documentation` | Missing README and per-category documentation coverage gaps |
+| `maintainability` | Oversized source files (> 50 KB) and TODO/FIXME debt markers |
+| `modernization` | Modernization readiness: reproducible dependencies, characterization tests, onboarding documentation |
+
+Each finding reports `evidence_references` (file paths behind the claim) and a source classification, and the scoring engine down-weights inferred evidence relative to direct evidence.
+
+## Scoring model
+
+The overall health score is 0–100 and is the weighted sum of seven category scores:
 
 | Category | Weight |
 |---|---:|
@@ -63,232 +91,174 @@ The current scoring model uses these category weights:
 | Testing | 15% |
 | Documentation | 10% |
 | Maintainability | 15% |
-| Modernization Readiness | 10% |
+| Modernization readiness | 10% |
 
-Scores are bounded to 0–100 and combine controlled severity, confidence, evidence-strength, and positive-signal adjustments. The UI uses the resulting backend assessment; it does not invent or recalculate the score.
+Each category starts at 100 and loses points per finding: `severity deduction × confidence factor × evidence-strength factor` (severity: info 0, low 3, medium 8, high 16, critical 28; confidence: high 1.0, medium 0.65, low 0.3; evidence: direct/verified 1.0, inferred 0.7, heuristic-with-manual-review 0.4). Verified positive signals add back up to 8 points, and every score is clamped to 0–100. Labels: ≥ 90 Excellent, ≥ 75 Healthy, ≥ 60 Needs Attention, ≥ 40 At Risk, below that Critical Attention. Risks are prioritized P0 (critical, high confidence, direct evidence) through P3. The dashboard's "Why this score?" panel exposes the same explanation, positive signals, and limitations returned by the backend.
 
-## Architecture
+## Renovation roadmap
 
-```text
-┌──────────────────────┐
-│   Next.js Frontend   │
-│ Assessment Dashboard │
-└──────────┬───────────┘
-           │ POST /api/v1/analyses
-           │ POST /api/v1/reports/export/*
-           ▼
-┌──────────────────────┐
-│      FastAPI API     │
-├──────────────────────┤
-│ URL Validation       │
-│ Safe Ingestion       │
-│ Deterministic        │
-│ Analysis             │
-├──────────────────────┤
-│ 7 Specialist Engine  │
-├──────────────────────┤
-│ Health / Risk Score  │
-├──────────────────────┤
-│ Renovation Roadmap   │
-├──────────────────────┤
-│ Canonical Reporting  │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│ Temporary Repository │
-│ Workspace            │
-│ No Code Execution    │
-└──────────────────────┘
-```
+The roadmap engine emits six fixed phases and places evidence-linked actions into them:
 
-## Technology stack
+1. **Baseline and Safety** — establish a safe starting point before any change
+2. **Stabilization** — critical/high findings and characterization-test baselines
+3. **Documentation and Observability** — README, onboarding, and observability gaps
+4. **Structural Refactoring** — reserved for structural work once stable
+5. **Incremental Modernization** — reserved for staged modernization steps
+6. **Validation and Governance** — reserved for verification and governance closure
 
-Backend:
-- Python 3.13-compatible environment
-- FastAPI
-- Pydantic / pydantic-settings
-- SQLAlchemy
-- SQLite for local/test fallback; PostgreSQL target for non-development environments
-- HTTPX
-- pytest
+Every action carries priority (P0–P3), effort (XS–XL), impact, risk, rationale, evidence references, prerequisites, expected outcome, acceptance criteria, and an automation-safety classification (`safe_to_automate`, `human_review_required`, or `do_not_automate`). Critical or high findings that require manual review — and security findings — additionally surface as explicit blockers. Quick wins are XS/S effort with low risk.
 
-Frontend:
-- Next.js 15
-- React 19
-- TypeScript 5
-- Tailwind CSS 3
+## Exports
 
-No queue, microservice layer, authentication system, or cloud infrastructure is required by the current design.
+Three canonical formats are generated server-side from the same report object the dashboard renders:
+
+- **JSON** — the canonical machine-readable assessment
+- **Markdown** — a portable engineering report
+- **HTML** — a standalone document; every interpolated string is escaped, it references no external scripts, fonts, images, or CDNs, and it is **always downloaded as a file — it is never injected into the application**
+
+Downloads use fixed filenames (`legacylens-assessment.json|md|html`) via `Content-Disposition: attachment`, and the frontend triggers them as blob downloads. The dashboard itself contains no `dangerouslySetInnerHTML`.
 
 ## Security model
 
-LegacyLens is intentionally conservative:
+- HTTPS-only repository URLs; the host must be exactly `github.com` with an `owner/repo` path.
+- URLs containing credentials, custom ports, query strings, or fragments are rejected.
+- Redirects are followed manually against an allowlist of `github.com`, `codeload.github.com`, and `objects.githubusercontent.com` (max 5 hops); anything else is rejected.
+- Archive extraction rejects NUL bytes, absolute paths, drive letters, `..` segments, and symlink/hardlink entries, and verifies every resolved path stays inside the temporary workspace.
+- Hard limits: 100 MB download, 10 MB per file, 250 MB total extracted, 10,000 files, 512-character paths, 30 s fetch timeout, 1 MiB request bodies.
+- Repository code is never executed and dependencies from the inspected repository are never installed.
+- In-process rate limiting: 60 requests per 60 s window per client IP and path, answered with `429` and `Retry-After`.
+- CORS is restricted (default origin `http://localhost:3000`, credentials disabled, GET/POST only).
+- Client-facing errors are sanitized to generic messages plus a request id; stack traces stay server-side.
+- Security headers on every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `Cache-Control: no-store`.
+- Exported HTML is escaped and self-contained; the frontend never injects HTML.
 
-- Only HTTPS `github.com/<owner>/<repo>` repository URLs are accepted.
-- Credentials, custom ports, query strings, and fragments are rejected by the repository URL validator.
-- GitHub archive redirects are rejected.
-- Archive extraction has path, file-count, per-file, total-size, and path-length limits.
-- ZIP/TAR symlink and hardlink protections are applied.
-- Temporary repository workspaces are cleaned up after analysis.
-- Repository code is not executed.
-- Dependencies are not installed from the inspected repository.
-- API request sizes and endpoint/IP request rates are bounded.
-- Security headers and restricted CORS are enabled.
-- Errors returned to clients do not expose internal stack traces.
-- Generated HTML is escaped and contains no external scripts, fonts, images, tracking, or CDN resources.
+These are conservative safeguards for a static-analysis tool, not a claim that any analyzed repository is vulnerability-free.
 
-These controls are security-conscious safeguards, not a guarantee that a repository is vulnerability-free.
+## Built with IBM Bob 2.0
 
-## Local setup
+LegacyLens was developed inside the IBM Bob 2.0 agentic workflow: the project was decomposed into explicit engineering phases (ingestion security → deterministic analysis → specialists → scoring → roadmap → reporting → dashboard → hardening → submission prep), and each phase followed the same loop — inspect, implement, test, inspect results, document status, continue. Bob's planning, implementation, and review contexts were used for phase decomposition, targeted code changes with verification commands run after each one, and security-boundary review. Claims in this repository's documentation are limited to commands actually executed and behavior actually observed; LegacyLens itself does not call any IBM Bob runtime API or SDK. See `docs/BOB_WORKFLOW.md` for the project-specific record.
 
-### 1. Backend
+## Local setup (Windows)
 
-```bash
+### Backend
+
+```bat
 cd backend
-python -m venv .venv
-# activate the virtual environment
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+set APP_ENV=test
+set DATABASE_URL=sqlite:///./legacylens.db
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Health check:
+Verify with `curl http://127.0.0.1:8000/api/v1/health`.
 
-```bash
-curl http://localhost:8000/api/v1/health
-```
+### Frontend
 
-### 2. Frontend
-
-Create the frontend environment if needed:
-
-```bash
+```bat
 cd frontend
-```
-
-Set the API base URL:
-
-```text
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
-```
-
-Install and run:
-
-```bash
 npm install
+echo NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1 > .env.local
 npm run dev
 ```
 
-The frontend dependency installation/build was not reproducible in the constrained validation environment used for this repository snapshot because npm network access timed out. Run the commands above on a normal networked development machine before the live demo.
+Then open `http://localhost:3000`. Live GitHub analysis requires outbound network access from the machine running the backend.
 
 ## Environment variables
 
-See `.env.example`. Important settings include:
+Backend (`backend/app/core/config.py`, pydantic-settings; all have defaults):
 
-- `APP_ENV`
-- `DATABASE_URL`
-- `SQLITE_DATABASE_URL`
-- `CORS_ORIGINS`
-- repository and archive safety limits
-- request-size and rate-limit settings
+| Variable | Default | Purpose |
+|---|---|---|
+| `APP_NAME` | `LegacyLens` | Service name in responses |
+| `APP_ENV` | `development` | Environment switch |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `API_PREFIX` | `/api/v1` | API route prefix |
+| `CORS_ORIGINS` | `http://localhost:3000` | Allowed browser origins (comma-separated) |
+| `DATABASE_URL` | PostgreSQL DSN | Primary database for non-development environments |
+| `SQLITE_DATABASE_URL` | `sqlite:///./legacylens.db` | Local/test database |
+| `MAX_REQUEST_BODY_BYTES` | `1048576` | Request body cap (1 MiB) |
+| `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS` | `60` / `60` | Rate limit per IP+path |
+| `MAX_REPOSITORY_SIZE_MB` | `100` | Archive download cap |
+| `MAX_FILE_SIZE_MB` | `10` | Per-file extraction cap |
+| `MAX_TOTAL_EXTRACTED_SIZE_MB` | `250` | Total extraction cap |
+| `MAX_FILE_COUNT` / `MAX_EXTRACTION_FILES` | `10000` / `10000` | File-count caps |
+| `MAX_PATH_LENGTH` | `512` | Path length cap |
+| `INGESTION_TIMEOUT_SECONDS` | `30` | Fetch timeout |
 
-Do not place backend secrets in `NEXT_PUBLIC_*` variables.
+Frontend: `NEXT_PUBLIC_API_BASE_URL` (default fallback `http://localhost:8000/api/v1`). Never put backend secrets in `NEXT_PUBLIC_*` variables.
 
 ## API endpoints
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/v1/health` | Runtime/database health |
-| `POST /api/v1/analyses` | Canonical repository analysis pipeline |
-| `POST /api/v1/repositories/ingest` | Safe repository ingestion surface |
-| `POST /api/v1/reports/export/json` | Canonical JSON report export |
-| `POST /api/v1/reports/export/markdown` | Canonical Markdown report export |
-| `POST /api/v1/reports/export/html` | Canonical standalone HTML report export |
-| `/docs` | FastAPI OpenAPI documentation |
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/health` | Service and database health (`status`, `version`, `database`) |
+| `POST` | `/api/v1/repositories/ingest` | Safe ingestion of a validated GitHub URL into a temporary workspace |
+| `POST` | `/api/v1/analyses` | Full pipeline: ingestion → analysis → specialists → scoring → roadmap → report (body: `{ "repository_url": "https://github.com/owner/repo" }`) |
+| `POST` | `/api/v1/reports/export/json` | Canonical JSON report download |
+| `POST` | `/api/v1/reports/export/markdown` | Canonical Markdown report download |
+| `POST` | `/api/v1/reports/export/html` | Canonical standalone HTML report download |
+| `GET` | `/docs` | FastAPI OpenAPI documentation |
 
-Reports are request-scoped in the current architecture; there is no fake persistent report store. Canonical export endpoints therefore accept the validated report object returned by the analysis pipeline.
+Export endpoints accept the validated report object returned by the analysis pipeline; reports are request-scoped and there is no fake persistent report store.
 
-## Testing
+## Tests
 
-Backend regression suite:
+Backend regression suite — **31 tests passing** across analysis engine, specialists, scoring, ingestion security, URL validation, security headers, and report export behavior:
 
-```bash
+```bat
 cd backend
-pytest -q
+python -m pytest -q
 ```
 
-Python compilation:
+Frontend validation:
 
-```bash
-cd ..
-python -m compileall -q backend/app
-```
-
-Frontend validation on a normal networked development machine:
-
-```bash
+```bat
 cd frontend
-npm ci   # when a lockfile is present
-# or npm install
-npm run lint
 npx tsc --noEmit
 npm run build
 ```
 
+Browser-level behavior (analysis flow, architecture map interactions, 375 px responsive layout, reduced-motion rendering, zero console errors) is verified against the running application with a Chrome DevTools Protocol harness.
+
 ## Demo workflow
 
-1. Start the backend and verify `/api/v1/health`.
-2. Start the Next.js frontend.
-3. Paste a public GitHub repository URL.
-4. Run the assessment.
-5. Show the health score and explainability panel.
-6. Open specialist findings and P0/P1 risks.
-7. Walk through quick wins, blockers, prerequisites, and roadmap phases.
-8. Download JSON, Markdown, and HTML reports.
+1. Start the backend and confirm `GET /api/v1/health` returns `ok`.
+2. Start the frontend and open `http://localhost:3000`.
+3. Paste a public repository, e.g. `https://github.com/pallets/flask`, and run the assessment.
+4. Show the health score, risk level, and the "Why this score?" explanation with positive signals and limitations.
+5. Filter and expand specialist findings; point at the evidence paths and source classification on each.
+6. Open the architecture map: click a language node for its findings and category scores, switch By health / By size, and try fullscreen.
+7. Walk the P0–P3 risks, then the roadmap phases with effort, prerequisites, and acceptance criteria.
+8. Download the JSON, Markdown, and HTML exports and open the HTML file directly.
 
-Live GitHub ingestion requires outbound DNS/network access. When network access is unavailable, use the deterministic local backend fixtures/tests documented in `docs/DEMO_RUNBOOK.md`; do not present fixture results as fresh live GitHub analysis.
+If network access is unavailable, use the deterministic local fixtures exercised by the backend test suite and label the demonstration as a fixture run — never present fixture output as a live GitHub analysis.
 
-## IBM Bob development workflow
+## Limitations
 
-IBM Bob was used as the development/workflow environment for iterative planning, implementation, verification, debugging, documentation, and phase-by-phase hardening. The product itself does **not** claim an IBM Bob runtime API, SDK, or runtime integration.
-
-The development process used a phased workflow: inspect → implement → test → document → review → harden. See `docs/BOB_WORKFLOW.md` for the project-specific record.
-
-## Current validation status
-
-Implemented and locally verified:
-- backend application and regression suite
-- Python compilation
-- health route and OpenAPI registration
-- canonical report export endpoints
-- export security behavior
-
-Environment-dependent / currently unverified in this constrained workspace:
-- frontend npm dependency installation
-- frontend lint/typecheck/build
-- browser-level QA
-- live GitHub ingestion
-- authentic screenshot/video capture
-
-## Known limitations
-
-- Analysis is static; it does not perform runtime application security testing.
-- Findings are conservative indicators and may require manual review.
+- Static analysis only: no runtime behavior, no DAST/SAST vulnerability scanning, no dependency installation or code execution.
+- Findings are conservative indicators; several require manual review and are labeled as such.
 - No automatic source-code rewriting is performed.
-- Live GitHub ingestion requires network access.
-- The current frontend does not expose true backend progress telemetry.
-- Reports are not persisted for later retrieval in the current architecture.
-- In-process rate limiting is designed for local/sandbox use rather than horizontally scaled production.
-
-## Team
-
-- Awais Jabbar
-- Muhammad Ekremah
-
-## Screenshots
-
-Authentic screenshots should be captured from the real running application before submission. Suggested capture sequence is documented in `docs/DEMO_CAPTURE_PLAN.md`.
+- Live GitHub ingestion requires outbound network access.
+- Reports are request-scoped; there is no persisted report history.
+- The fetched commit SHA is not pinned in responses in the current implementation.
+- Rate limiting is in-process and intended for local/sandbox deployment, not horizontally scaled production.
+- The architecture map caps display at 8 languages, 12 technologies, and 12 entry points and says so in the UI when items are hidden.
 
 ## License
 
-No project license has been asserted in the repository snapshot. Add the intended license file and README section before submission if the hackathon requires one.
+MIT License — Copyright (c) 2026 AWAIS-EKREMAH
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Team
+
+**AWAIS-EKREMAH**
+
+- Awais Jabbar
+- Muhammad Ekremah
