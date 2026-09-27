@@ -263,13 +263,14 @@ export default function AnalyzePage() {
                 </div>
                 <div>
                   <h3>Limitations & unknowns</h3>
-                  {[...(data.assessment.assessment.limitations ?? []), ...(data.report.limitations ?? [])]
-                    .slice(0, 8)
-                    .map((limitation: string) => (
-                      <p className="signal" key={limitation}>
-                        • {limitation}
-                      </p>
-                    ))}
+                  {Array.from(new Set([
+  ...(data.assessment.assessment.limitations ?? []),
+  ...(data.report.limitations ?? []),
+])).slice(0, 8).map((limitation: string, index: number) => (
+  <p className="signal" key={`limitation-${index}-${limitation.slice(0, 30)}`}>
+    • {limitation}
+  </p>
+))}
                 </div>
               </div>
               <div className="category-grid">
