@@ -127,7 +127,7 @@ Downloads use fixed filenames (`legacylens-assessment.json|md|html`) via `Conten
 - Hard limits: 100 MB download, 10 MB per file, 250 MB total extracted, 10,000 files, 512-character paths, 30 s fetch timeout, 1 MiB request bodies.
 - Repository code is never executed and dependencies from the inspected repository are never installed.
 - In-process rate limiting: 60 requests per 60 s window per client IP and path, answered with `429` and `Retry-After`.
-- CORS is restricted (default origin `http://localhost:3000`, credentials disabled, GET/POST only).
+- CORS is restricted (default origin `http://localhost:3000`, credentials disabled, GET/POST only). Origins are matched exactly, so `http://127.0.0.1:3000` is a different origin and is rejected unless it is added to `CORS_ORIGINS`.
 - Client-facing errors are sanitized to generic messages plus a request id; stack traces stay server-side.
 - Security headers on every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `Cache-Control: no-store`.
 - Exported HTML is escaped and self-contained; the frontend never injects HTML.
@@ -164,6 +164,8 @@ npm run dev
 ```
 
 Then open `http://localhost:3000`. Live GitHub analysis requires outbound network access from the machine running the backend.
+
+Open the app through the `localhost` hostname, not `http://127.0.0.1:3000`. The backend's default CORS allowlist contains exactly `http://localhost:3000`, so an IP-based origin fails the preflight for `POST /api/v1/analyses` with `400` and the analysis never starts. If you must serve the frontend from a different origin, start the backend with `set CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000` first.
 
 ## Environment variables
 
