@@ -1,0 +1,456 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SSRF &amp; Redirect Safety — fetcher.py Security Report</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1f2328;
+    background: #ffffff;
+    padding: 32px 16px 48px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #57606a; font-size: 13px; margin-bottom: 28px; }
+  h2 { font-size: 15px; font-weight: 700; margin: 28px 0 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+  h3 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; }
+  p { margin-bottom: 8px; }
+  ul { margin: 6px 0 8px 18px; }
+  li { margin-bottom: 4px; }
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 12px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    overflow-x: auto;
+    margin: 8px 0 12px;
+  }
+
+  /* Severity badges */
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .sev-critical  { background: #fde8e8; color: #b91c1c; border: 1px solid #fca5a5; }
+  .sev-high      { background: #fff3e0; color: #c05000; border: 1px solid #fdba74; }
+  .sev-medium    { background: #fefce8; color: #92400e; border: 1px solid #fcd34d; }
+  .sev-low       { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
+  .sev-info      { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; }
+
+  /* Finding cards */
+  .finding {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    background: #ffffff;
+  }
+  .finding-header { margin-bottom: 8px; }
+  .finding-id { font-size: 11px; color: #57606a; font-weight: 600; margin-right: 4px; }
+  .finding-title { font-size: 14px; font-weight: 700; }
+  .finding-section { font-size: 12px; font-weight: 600; color: #57606a; margin: 10px 0 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Summary table */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 13px; }
+  th { background: #f7f8fa; font-weight: 700; text-align: left; padding: 7px 10px; border: 1px solid #e5e7eb; }
+  td { padding: 7px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafafa; }
+
+  /* Positive / negative callouts */
+  .callout {
+    border-left: 4px solid;
+    padding: 10px 14px;
+    border-radius: 0 6px 6px 0;
+    margin: 10px 0;
+    font-size: 13px;
+  }
+  .callout-good   { border-color: #34d399; background: #f0fdf4; }
+  .callout-warn   { border-color: #fbbf24; background: #fffbeb; }
+
+  footer {
+    margin-top: 48px;
+    padding-top: 14px;
+    border-top: 1px solid #e5e7eb;
+    text-align: center;
+    font-size: 12px;
+    color: #57606a;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>SSRF &amp; Redirect Safety Review</h1>
+  <p class="subtitle">
+    File: <code>backend/app/ingestion/fetcher.py</code>  · 
+    Supporting: <code>backend/app/services/url_validation.py</code>  · 
+    Scope: Server-Side Request Forgery, open redirect, HTTP safety
+  </p>
+
+  
+  <h2>Executive Summary</h2>
+  <p>
+    The fetcher was substantially hardened relative to its predecessor (<code>fetcher.py.bak</code>): it validates
+    the input URL through <code>validate_public_github_url</code> before any network call is made, implements a
+    controlled redirect-following loop that allowlists destination hosts, and enforces a download-size cap.
+    The overall SSRF posture is <strong>good</strong>. However, four issues remain that range from medium to
+    informational severity, and a gap in the upstream URL validator warrants attention.
+  </p>
+
+  
+  <h2>Findings Summary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Title</th>
+        <th>Severity</th>
+        <th>Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>F-01</td>
+        <td>DNS Rebinding / TOCTOU on <code>_resolve_default_branch</code></td>
+        <td><span class="badge sev-medium">Medium</span></td>
+        <td><code>fetcher.py:27–36</code></td>
+      </tr>
+      <tr>
+        <td>F-02</td>
+        <td>Redirect loop uses response body before size check</td>
+        <td><span class="badge sev-medium">Medium</span></td>
+        <td><code>fetcher.py:38–52 / 59–61</code></td>
+      </tr>
+      <tr>
+        <td>F-03</td>
+        <td>Redirect allowlist does not enforce HTTPS on <code>Location</code></td>
+        <td><span class="badge sev-medium">Medium</span></td>
+        <td><code>fetcher.py:43–49</code></td>
+      </tr>
+      <tr>
+        <td>F-04</td>
+        <td><code>_resolve_default_branch</code> follows redirects unconditionally</td>
+        <td><span class="badge sev-low">Low</span></td>
+        <td><code>fetcher.py:30</code></td>
+      </tr>
+      <tr>
+        <td>F-05</td>
+        <td>Validator does not block encoded loopback / decimal IP forms</td>
+        <td><span class="badge sev-low">Low</span></td>
+        <td><code>url_validation.py:8, 32–36</code></td>
+      </tr>
+      <tr>
+        <td>F-06</td>
+        <td>No <code>timeout</code> on streaming body read</td>
+        <td><span class="badge sev-info">Info</span></td>
+        <td><code>fetcher.py:41</code></td>
+      </tr>
+      <tr>
+        <td>F-07</td>
+        <td>Branch name interpolated into URL without sanitisation</td>
+        <td><span class="badge sev-info">Info</span></td>
+        <td><code>fetcher.py:56</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>What Is Working Well</h2>
+  <div class="callout callout-good">
+    <strong>Input validation first.</strong> Every caller goes through <code>validate_public_github_url</code> before
+    the fetcher touches the network. The validator enforces HTTPS, blocks credentials/ports/query strings/fragments,
+    pins the hostname to <code>github.com</code>, and rejects RFC-1918 / loopback IPs by name and by numeric value.
+  </div>
+  <div class="callout callout-good">
+    <strong>Redirect allowlist.</strong> <code>_follow_redirects_to_zip</code> turns off httpx's automatic
+    redirect following and manually validates every <code>Location</code> header against a strict allowlist
+    (<code>github.com</code>, <code>codeload.github.com</code>, <code>objects.githubusercontent.com</code>).
+    This correctly prevents an attacker-controlled GitHub repository from redirecting the server to an internal
+    endpoint.
+  </div>
+  <div class="callout callout-good">
+    <strong>Redirect cap.</strong> The loop iterates at most 5 times and raises on exhaustion, preventing
+    infinite redirect chains.
+  </div>
+  <div class="callout callout-good">
+    <strong>Download size cap.</strong> A configurable <code>max_bytes</code> guard (default 100 MB) prevents
+    memory exhaustion from a giant ZIP response.
+  </div>
+  <div class="callout callout-good">
+    <strong>Hardened versus the previous version.</strong> The backup (<code>fetcher.py.bak</code>) rejected all
+    redirects blindly, which would block legitimate GitHub archive downloads. The current version replaces that
+    naive approach with a targeted allowlist, which is the correct design.
+  </div>
+
+  
+  <h2>Detailed Findings</h2>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-01</span>
+      <span class="badge sev-medium">Medium</span>
+      <span class="finding-title">DNS Rebinding / TOCTOU on <code>_resolve_default_branch</code></span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      <code>_resolve_default_branch</code> queries <code>https://api.github.com/repos/{owner}/{repo}</code>
+      with <code>follow_redirects=True</code> and has no host-pinning on that call. The resolved branch name
+      is then interpolated directly into the archive URL used in <code>fetch()</code>. There is a time-of-check /
+      time-of-use gap: the validator has already approved the <em>input</em> URL, but this second outbound
+      request is constructed internally and is not re-validated.
+    </p>
+    <p>
+      In the realistic threat model the attacker controls the GitHub repository and could manipulate API
+      responses. More critically, if the GitHub API URL were ever parameterised or configurable in future,
+      this path would have no SSRF guard.
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>Add explicit host pinning on the API request and strip <code>follow_redirects</code>:</p>
+    <pre>r = httpx.get(
+    api,
+    timeout=min(self.timeout, 10),
+    follow_redirects=False,          # GitHub API does not redirect
+    headers={"Accept": "application/vnd.github+json"},
+)
+# Verify host before making the call (defensive):
+assert urlparse(api).hostname == "api.github.com"</pre>
+  </div>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-02</span>
+      <span class="badge sev-medium">Medium</span>
+      <span class="finding-title">Response body is buffered before the size check</span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      <code>_follow_redirects_to_zip</code> calls <code>c.get(url, ...)</code> which, by default in httpx,
+      buffers the <em>entire</em> response body into memory before returning. The size check
+      (<code>len(r.content) &gt; self.max_bytes</code>) in <code>fetch()</code> happens <em>after</em>
+      the full body has already been allocated. A malicious or misconfigured server in the allowlist could
+      serve a multi-gigabyte response and cause OOM before the guard fires.
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>Use streaming and abort early on Content-Length or while reading chunks:</p>
+    <pre>with httpx.stream("GET", url, headers={"Accept": "application/zip"}) as r:
+    if int(r.headers.get("content-length", 0)) &gt; self.max_bytes:
+        raise FetchError("Repository download limit exceeded")
+    chunks = []
+    received = 0
+    for chunk in r.iter_bytes(chunk_size=65536):
+        received += len(chunk)
+        if received &gt; self.max_bytes:
+            raise FetchError("Repository download limit exceeded")
+        chunks.append(chunk)
+    return b"".join(chunks)</pre>
+  </div>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-03</span>
+      <span class="badge sev-medium">Medium</span>
+      <span class="finding-title">Redirect <code>Location</code> header is not enforced to use HTTPS</span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      The redirect validation in <code>_follow_redirects_to_zip</code> checks only the hostname against the
+      allowlist. A <code>Location</code> header of <code>http://codeload.github.com/...</code> (plain HTTP)
+      would pass the host check and be followed, downgrading the connection and opening the download to
+      network interception or MitM between the server and GitHub's CDN.
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>Add a scheme check alongside the host check:</p>
+    <pre>parsed_loc = urlparse(loc)
+if parsed_loc.scheme.lower() != "https":
+    raise FetchError("Unsafe redirect rejected")
+host = (parsed_loc.hostname or "").lower()
+if host not in _ALLOWED_REDIRECT_HOSTS:
+    raise FetchError("Unsafe redirect rejected")</pre>
+  </div>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-04</span>
+      <span class="badge sev-low">Low</span>
+      <span class="finding-title"><code>_resolve_default_branch</code> uses <code>follow_redirects=True</code></span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      The GitHub REST API call at line 30 sets <code>follow_redirects=True</code>, delegating all redirect
+      logic to httpx with no host restrictions. While the URL is hardcoded to <code>api.github.com</code>,
+      the GitHub API does not redirect in normal operation; the flag is unnecessary and adds surface area if
+      GitHub were ever to issue a redirect to an unexpected host (e.g., during an incident or domain migration).
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>Set <code>follow_redirects=False</code>. If GitHub API ever issues a 301/302, fail fast and let the
+    caller fall back to <code>"main"</code>, which already happens in the <code>except httpx.HTTPError</code>
+    block.</p>
+  </div>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-05</span>
+      <span class="badge sev-low">Low</span>
+      <span class="finding-title">Validator does not block all loopback/private IP representations</span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      <code>_BLOCKED_HOSTS</code> in <code>url_validation.py</code> is a string-literal blocklist. The
+      <code>ip_address()</code> path does catch private/loopback IPs numerically, but only when the input
+      <em>parses</em> as an IP. Hostnames like <code>github.com</code> are pinned separately. The combination
+      is correct in the current narrow context (only <code>github.com</code> is allowed). However,
+      <code>_BLOCKED_HOSTS</code> is dead code: the hostname check on line 27 (<code>host != "github.com"</code>)
+      already rejects everything else before the blocklist is consulted on line 29, so the blocklist provides
+      no actual protection.
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>
+      Remove <code>_BLOCKED_HOSTS</code> and the dead-code check on line 29 to avoid creating a false sense of
+      defence-in-depth. The hostname equality check is sufficient and clear on its own. Alternatively, move
+      the IP-based private/loopback check before the hostname equality guard if you want it as a true
+      belt-and-suspenders layer.
+    </p>
+  </div>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-06</span>
+      <span class="badge sev-info">Info</span>
+      <span class="finding-title">No read timeout on the streaming body download</span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      <code>httpx.Client(timeout=self.timeout)</code> applies the same timeout value to the connect phase and
+      the full response read. httpx's default <code>Timeout</code> object treats a single scalar as a
+      "total" timeout, but if the server begins sending data very slowly, the connection may remain open
+      for the full <code>timeout</code> seconds even while delivering almost nothing. For a 30-second timeout
+      and a server trickling bytes, this is a slow-read resource exhaustion vector.
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>Use an explicit per-phase timeout with a short read timeout:</p>
+    <pre>timeout = httpx.Timeout(connect=10.0, read=30.0, write=5.0, pool=5.0)</pre>
+  </div>
+
+  
+  <div class="finding">
+    <div class="finding-header">
+      <span class="finding-id">F-07</span>
+      <span class="badge sev-info">Info</span>
+      <span class="finding-title">Branch name from API response is interpolated into a URL without sanitisation</span>
+    </div>
+
+    <div class="finding-section">Description</div>
+    <p>
+      The string returned by <code>_resolve_default_branch</code> is used directly in an f-string URL on
+      line 56: <code>f"https://github.com/.../refs/heads/{branch}.zip"</code>. Because this URL is then
+      only processed by <code>_follow_redirects_to_zip</code>, whose host-allowlist validates the
+      <em>destination</em> after any redirect, an unusual branch name (e.g., containing <code>../</code> or
+      URL-special characters) could produce a malformed URL or unexpected path traversal at GitHub's CDN.
+      The practical risk is low because GitHub's own API controls the branch name value, but the code
+      assumes that value is safe without verifying it.
+    </p>
+
+    <div class="finding-section">Recommendation</div>
+    <p>Validate the branch name against a safe pattern before interpolation:</p>
+    <pre>import re
+_BRANCH_RE = re.compile(r"^[A-Za-z0-9._/\-]{1,255}$")
+if not _BRANCH_RE.match(branch):
+    raise FetchError("Unexpected branch name format")</pre>
+  </div>
+
+  
+  <h2>Overall Risk Assessment</h2>
+  <table>
+    <thead>
+      <tr><th>Area</th><th>Current State</th><th>Target State</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>SSRF — Input validation</td>
+        <td><span class="badge sev-low">Low risk</span> Validator pins host &amp; scheme</td>
+        <td>Remove dead <code>_BLOCKED_HOSTS</code> code (F-05)</td>
+      </tr>
+      <tr>
+        <td>SSRF — Redirect chain</td>
+        <td><span class="badge sev-medium">Medium risk</span> Host allowlisted, scheme unchecked</td>
+        <td>Enforce HTTPS on Location (F-03)</td>
+      </tr>
+      <tr>
+        <td>SSRF — API call</td>
+        <td><span class="badge sev-low">Low risk</span> URL hardcoded; follow_redirects=True is unnecessary</td>
+        <td>Disable redirects + assert host (F-01, F-04)</td>
+      </tr>
+      <tr>
+        <td>DoS — Memory exhaustion</td>
+        <td><span class="badge sev-medium">Medium risk</span> Full buffer before size check</td>
+        <td>Stream and check incrementally (F-02)</td>
+      </tr>
+      <tr>
+        <td>DoS — Slow-read</td>
+        <td><span class="badge sev-info">Low/Info</span> Scalar timeout covers this partially</td>
+        <td>Use per-phase httpx Timeout (F-06)</td>
+      </tr>
+      <tr>
+        <td>Input hygiene — Branch name</td>
+        <td><span class="badge sev-info">Info</span> Trusted source; no validation</td>
+        <td>Validate with regex before URL use (F-07)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  
+  <h2>Recommended Fix Priority</h2>
+  <ol style="margin-left:18px;margin-top:6px">
+    <li><strong>F-03</strong> — Add HTTPS scheme enforcement on redirect <code>Location</code> values (one-liner, high leverage).</li>
+    <li><strong>F-02</strong> — Switch to streaming download with incremental size check (prevents OOM under adversarial CDN responses).</li>
+    <li><strong>F-01 / F-04</strong> — Disable <code>follow_redirects</code> on the API call and assert the target host (belt-and-suspenders for the TOCTOU surface).</li>
+    <li><strong>F-06</strong> — Use a structured per-phase <code>httpx.Timeout</code>.</li>
+    <li><strong>F-05</strong> — Remove dead <code>_BLOCKED_HOSTS</code> code to reduce misleading defence-in-depth illusion.</li>
+    <li><strong>F-07</strong> — Add branch-name regex guard before URL interpolation.</li>
+  </ol>
+
+  <footer>Made with IBM Bob</footer>
+</div>
+</body>
+</html>
